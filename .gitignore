@@ -1,0 +1,70 @@
+# OS generated files
+.DS_Store
+.AppleDouble
+.LSOverride
+Icon?
+.Spotlight-V100
+.Trashes
+._*
+
+Thumbs.db
+Desktop.ini
+
+# Editor and IDE
+.vscode/
+.idea/
+*.iml
+*.ipr
+*.iws
+
+# Logs and temp files
+*.log
+*.tmp
+*.temp
+*.swp
+*.swo
+*~
+
+# Environment and local config
+.env
+.env.*
+*.local
+
+# Archives
+*.zip
+*.tar
+*.gz
+*.tgz
+*.bz2
+*.7z
+*.rar
+
+# Java / Gradle
+**/.gradle/
+**/build/
+**/out/
+**/target/
+**/*.class
+
+# Go
+**/bin/
+**/dist/
+**/.coverprofile
+**/coverage.out
+
+# Rust
+**/target/
+**/Cargo.lock
+
+# Test / coverage artifacts
+**/coverage/
+**/.coverage
+**/htmlcov/
+
+# Mac / Linux metadata
+.nfs*
+
+# Keep prompt and solution files tracked
+!**/prompts.md
+!**/solution.md
+!**/README.md
