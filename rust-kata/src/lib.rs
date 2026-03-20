@@ -25,6 +25,8 @@ pub fn calculate_total_cents(order: &Order) -> i32 {
         }
     } else if customer_type == "employee" {
         discount_percent += 30;
+    } else if customer_type == "partner" {
+        discount_percent += 12;
     } else if customer_type == "regular" || customer_type == "new" {
         discount_percent += 0;
     } else {
@@ -43,10 +45,16 @@ pub fn calculate_total_cents(order: &Order) -> i32 {
         if subtotal >= 20000 {
             discount_percent += 7;
         }
+    } else if coupon == "PARTNER5" {
+        if customer_type == "partner" && subtotal >= 12000 {
+            discount_percent += 5;
+        }
     }
 
     if order.black_friday {
-        if customer_type != "employee" {
+        if customer_type == "partner" {
+            discount_percent += 3;
+        } else if customer_type != "employee" {
             discount_percent += 5;
         }
     }
@@ -80,6 +88,10 @@ pub fn calculate_total_cents(order: &Order) -> i32 {
     }
 
     if customer_type == "premium" && discounted_subtotal >= 20000 {
+        shipping_cents = 0;
+    }
+
+    if customer_type == "partner" && discounted_subtotal >= 15000 {
         shipping_cents = 0;
     }
 
@@ -833,5 +845,217 @@ mod tests {
         // ship=900→FREESHIP (17000>=8000)→0→vip(17000>=15000)→0, ship=0
         // tax=17000*19/100=3230 → 20230
         assert_eq!(calculate_total_cents(&order("vip", 20000, "DE", "FREESHIP", false)), 20230);
+    }
+
+    // =========================================================================
+    // 11. NEW — partner customer type (base discount 12%)
+    // =========================================================================
+
+    // --- Base discount across countries ---
+    #[test]
+    fn partner_it() {
+        // disc=12%, ds=10000*88/100=8800, ship=700, tax=8800*22/100=1936 → 11436
+        assert_eq!(calculate_total_cents(&order("partner", 10000, "IT", "", false)), 11436);
+    }
+
+    #[test]
+    fn partner_de() {
+        // disc=12%, ds=8800, ship=900, tax=8800*19/100=1672 → 11372
+        assert_eq!(calculate_total_cents(&order("partner", 10000, "DE", "", false)), 11372);
+    }
+
+    #[test]
+    fn partner_us() {
+        // disc=12%, ds=8800, ship=1500, tax=8800*7/100=616 → 10916
+        assert_eq!(calculate_total_cents(&order("partner", 10000, "US", "", false)), 10916);
+    }
+
+    #[test]
+    fn partner_other_country() {
+        // disc=12%, ds=8800, ship=2500, tax=0 → 11300
+        assert_eq!(calculate_total_cents(&order("partner", 10000, "FR", "", false)), 11300);
+    }
+
+    // --- Free shipping at discounted subtotal >= 15000 ---
+    #[test]
+    fn partner_free_shipping_at_threshold() {
+        // Need ds>=15000. disc=12%, ds=subtotal*88/100.
+        // 17046*88/100=15000 (integer div). disc=12%, ds=15000→ship=0
+        // tax=15000*19/100=2850 → 17850
+        assert_eq!(calculate_total_cents(&order("partner", 17046, "DE", "", false)), 17850);
+    }
+
+    #[test]
+    fn partner_no_free_shipping_below_threshold() {
+        // 17045*88/100=14999. ship=900
+        // tax=14999*19/100=2849 → 18748
+        assert_eq!(calculate_total_cents(&order("partner", 17045, "DE", "", false)), 18748);
+    }
+
+    #[test]
+    fn partner_free_shipping_it() {
+        // partner, 20000, IT: disc=12%, ds=17600>=15000→ship=0
+        // tax=17600*22/100=3872 → 21472
+        assert_eq!(calculate_total_cents(&order("partner", 20000, "IT", "", false)), 21472);
+    }
+
+    #[test]
+    fn partner_no_free_shipping_small_subtotal() {
+        // partner, 5000, IT: disc=12%, ds=4400<15000→ship=700
+        // tax=4400*22/100=968 → 6068
+        assert_eq!(calculate_total_cents(&order("partner", 5000, "IT", "", false)), 6068);
+    }
+
+    // --- PARTNER5 coupon: +5% only for partner, subtotal >= 12000 ---
+    #[test]
+    fn partner5_qualifies() {
+        // partner, 12000, IT, PARTNER5: disc=12+5=17%, ds=12000*83/100=9960
+        // ship=700, tax=9960*22/100=2191 → 12851
+        assert_eq!(calculate_total_cents(&order("partner", 12000, "IT", "PARTNER5", false)), 12851);
+    }
+
+    #[test]
+    fn partner5_does_not_qualify_below_threshold() {
+        // partner, 11999, IT, PARTNER5: subtotal<12000→no coupon, disc=12%
+        // ds=11999*88/100=10559, ship=700, tax=10559*22/100=2322 → 13581
+        assert_eq!(calculate_total_cents(&order("partner", 11999, "IT", "PARTNER5", false)), 13581);
+    }
+
+    #[test]
+    fn partner5_ignored_for_regular() {
+        // regular, 15000, IT, PARTNER5: not partner→coupon ignored
+        // disc=0%, ds=15000, ship=700, tax=3300 → 19000
+        assert_eq!(calculate_total_cents(&order("regular", 15000, "IT", "PARTNER5", false)), 19000);
+    }
+
+    #[test]
+    fn partner5_ignored_for_vip() {
+        // vip, 15000, IT, PARTNER5: not partner→no effect
+        // disc=15%, ds=12750, ship=700, tax=12750*20/100=2550 → 16000
+        assert_eq!(calculate_total_cents(&order("vip", 15000, "IT", "PARTNER5", false)), 16000);
+    }
+
+    #[test]
+    fn partner5_ignored_for_employee() {
+        // employee, 15000, IT, PARTNER5: not partner→no effect
+        // disc=30%, ds=10500, ship=700, tax=10500*22/100=2310 → 13510
+        assert_eq!(calculate_total_cents(&order("employee", 15000, "IT", "PARTNER5", false)), 13510);
+    }
+
+    // --- Black Friday: partner gets +3% (not +5%) ---
+    #[test]
+    fn partner_bf_it() {
+        // partner, 10000, IT, BF: disc=12+3=15%, ds=8500
+        // ship=700, tax=8500*22/100=1870 → 11070
+        assert_eq!(calculate_total_cents(&order("partner", 10000, "IT", "", true)), 11070);
+    }
+
+    #[test]
+    fn partner_bf_de() {
+        // disc=12+3=15%, ds=8500, ship=900, tax=8500*19/100=1615 → 11015
+        assert_eq!(calculate_total_cents(&order("partner", 10000, "DE", "", true)), 11015);
+    }
+
+    #[test]
+    fn partner_bf_us() {
+        // disc=12+3=15%, ds=8500, ship=1500+300=1800, tax=595 → 10895
+        assert_eq!(calculate_total_cents(&order("partner", 10000, "US", "", true)), 10895);
+    }
+
+    // --- Discount cap interactions ---
+    #[test]
+    fn partner_partner5_bf_save10_no_stacking() {
+        // PARTNER5 is in else-if chain, so SAVE10 won't stack with PARTNER5.
+        // partner, 20000, IT, SAVE10, BF: disc=12+10(SAVE10)+3(BF)=25%
+        // ds=20000*75/100=15000→ship=0(partner>=15000)
+        // tax=15000*22/100=3300 → 18300
+        assert_eq!(calculate_total_cents(&order("partner", 20000, "IT", "SAVE10", true)), 18300);
+    }
+
+    #[test]
+    fn partner_bulk_bf() {
+        // partner, 25000, DE, BULK, BF: disc=12+7(BULK)+3(BF)=22%
+        // ds=25000*78/100=19500>=15000→ship=0
+        // tax=19500*19/100=3705 → 23205
+        assert_eq!(calculate_total_cents(&order("partner", 25000, "DE", "BULK", true)), 23205);
+    }
+
+    #[test]
+    fn partner_partner5_bf() {
+        // partner, 15000, IT, PARTNER5, BF: disc=12+5(PARTNER5)+3(BF)=20%
+        // ds=15000*80/100=12000, ship=700 (12000<15000)
+        // tax=12000*22/100=2640 → 15340
+        assert_eq!(calculate_total_cents(&order("partner", 15000, "IT", "PARTNER5", true)), 15340);
+    }
+
+    // --- FREESHIP interaction ---
+    #[test]
+    fn partner_freeship_qualifies() {
+        // partner, 12000, US, FREESHIP: disc=12%, ds=10560>=8000→ship=0
+        // (partner 10560<15000→no partner free ship, but FREESHIP applies first)
+        // tax=10560*7/100=739 → 11299
+        assert_eq!(calculate_total_cents(&order("partner", 12000, "US", "FREESHIP", false)), 11299);
+    }
+
+    #[test]
+    fn partner_freeship_does_not_qualify() {
+        // partner, 5000, US, FREESHIP: disc=12%, ds=4400<8000→ship stays 1500
+        // tax=4400*7/100=308 → 6208
+        assert_eq!(calculate_total_cents(&order("partner", 5000, "US", "FREESHIP", false)), 6208);
+    }
+
+    // --- TAXFREE interaction ---
+    #[test]
+    fn partner_taxfree_de() {
+        // partner, 10000, DE, TAXFREE: disc=12%, ds=8800, ship=900, tax=0 → 9700
+        assert_eq!(calculate_total_cents(&order("partner", 10000, "DE", "TAXFREE", false)), 9700);
+    }
+
+    #[test]
+    fn partner_taxfree_it_blocked() {
+        // partner, 10000, IT, TAXFREE: TAXFREE blocked in IT
+        // disc=12%, ds=8800, ship=700, tax=8800*22/100=1936 → 11436
+        assert_eq!(calculate_total_cents(&order("partner", 10000, "IT", "TAXFREE", false)), 11436);
+    }
+
+    // --- Edge cases ---
+    #[test]
+    fn partner_zero_subtotal() {
+        // disc=12%, ds=0, ship=700, tax=0 → 700
+        assert_eq!(calculate_total_cents(&order("partner", 0, "IT", "", false)), 700);
+    }
+
+    #[test]
+    fn partner_negative_subtotal_floors_to_zero() {
+        // disc=12%, ds=-1000*88/100=-880, ship=700, tax=-880*22/100=-193
+        // total=-880+700-193=-373 → 0
+        assert_eq!(calculate_total_cents(&order("partner", -1000, "IT", "", false)), 0);
+    }
+
+    #[test]
+    fn partner_high_subtotal_free_shipping_all_countries() {
+        // partner, 50000, FR: disc=12%, ds=44000>=15000→ship=0, tax=0 → 44000
+        assert_eq!(calculate_total_cents(&order("partner", 50000, "FR", "", false)), 44000);
+    }
+
+    #[test]
+    fn partner_partner5_at_exact_threshold() {
+        // partner, 12000, DE, PARTNER5: subtotal=12000>=12000→+5%
+        // disc=12+5=17%, ds=12000*83/100=9960, ship=900, tax=9960*19/100=1892 → 12752
+        assert_eq!(calculate_total_cents(&order("partner", 12000, "DE", "PARTNER5", false)), 12752);
+    }
+
+    #[test]
+    fn partner_save10_stacks() {
+        // partner, 10000, IT, SAVE10: disc=12+10=22%
+        // ds=10000*78/100=7800, ship=700, tax=7800*22/100=1716 → 10216
+        assert_eq!(calculate_total_cents(&order("partner", 10000, "IT", "SAVE10", false)), 10216);
+    }
+
+    #[test]
+    fn partner_viponly_no_effect() {
+        // VIPONLY only works for vip, not partner
+        // disc=12%, ds=8800, ship=700, tax=1936 → 11436
+        assert_eq!(calculate_total_cents(&order("partner", 10000, "IT", "VIPONLY", false)), 11436);
     }
 }
